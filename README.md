@@ -1,4 +1,4 @@
-# 19-603: Group 1 Final Project
+# 19-603: Final Project
 IPUMS CPS Dataset Analysis (Income Prediction)
 
 **Final Report**: reports/19603_Group1_FinalProject_Report.pdf
