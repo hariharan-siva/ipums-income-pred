@@ -1,0 +1,77 @@
+---
+title: "19603_DS_Project"
+author: "Group 1"
+date: "2024-03-20"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The following sections detail our exploration of the IPUMS CPS Dataset. We perform fundamental ETL and create some basic plots along with a simple model as a preliminary exploration for our project.
+
+```{r Testing Data Import, echo=FALSE}
+library('ipumsr')
+library('tidyverse')
+
+ddi <- read_ipums_ddi("cps_00004.xml")
+data <- read_ipums_micro(ddi)
+```
+```{r Pre-processing, echo=FALSE}
+data = data %>% filter(
+  INCTOT != 999999999,
+  !is.na(CITIZEN),
+  !is.na(IND),
+  IND != 0,
+  METFIPS != 99999,
+  METFIPS != 99998,
+  RACE != 999,
+  !is.na(RACE),
+  EDUC != 999,
+)
+
+dim(data)
+```
+```{r Creation of Required Data from Source, echo = FALSE}
+
+# Grouping at the geography level to gauge personal and family income of people
+
+geo_data <- data %>%  filter(YEAR == 2023) %>%
+  group_by(STATEFIP, IND, OCC) %>%
+  summarise(mean_personal_income = mean(INCTOT, na.rm = TRUE),
+            mean_total_family_income = mean(FTOTVAL, na.rm = TRUE)) %>% 
+  arrange(desc(mean_personal_income))
+
+head(geo_data)
+```
+
+```{r Preliminary Plots, echo = FALSE}
+
+ggplot(data = (data %>% filter(YEAR == 2023)), mapping = aes(x = as.factor(EDUC), y = INCTOT)) +
+  geom_boxplot() + 
+  theme_minimal() + 
+  labs(title = "Income Variation by Educational Background",
+       x = "Education Codes",
+       y = "Total Personal Income")
+
+
+ggplot(data = (geo_data %>% filter(STATEFIP == 42, IND == 7390)), mapping = aes(x = as.factor(OCC), y = mean_personal_income)) +
+  geom_boxplot() + 
+  theme_minimal() +
+  labs(title = "Income vs Occupation (State: Pennsylvania, Industry: Tech Consulting)",
+       x = "Occupation Codes",
+       y = "Mean Personal Income")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+
+**NEXT STEPS**: Procure CODE to NAME mapping for various features which are available as codes in the data set to gain a better understanding of the variables. 
+
+
+```{r Preliminary Model, echo = FALSE}
+
+model <- lm(mean_personal_income ~ as.factor(STATEFIP) + as.factor(OCC), data = (geo_data %>% filter(IND == 7390)))
+
+summary(model)
+```

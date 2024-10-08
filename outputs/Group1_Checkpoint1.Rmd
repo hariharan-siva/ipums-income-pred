@@ -1,0 +1,263 @@
+---
+title: "Final Group Project: Updated Checkpoint Submission"
+author: "Group 1"
+date: "`r Sys.Date()`"
+output:
+  pdf_document
+---
+
+# Introduction
+
+This document contains the updated checkpoint submission for our Final Group Project. We have thoroughly reviewed the feedback provided and incorporated suggested actions to enhance our project. This document includes all the code and visualizations used in our analysis. 
+
+# Research question 
+
+Just state research question, assumptions and why the particular data and model is adequate to answer that question
+
+#Data Preparation and Cleaning
+```{r}
+library('ipumsr')
+suppressWarnings(library('tidyverse'))  # Setting a seed for reproducibility
+suppressWarnings(library('caret'))
+library('glmnet')
+
+set.seed(123)
+
+ddi <- read_ipums_ddi("cps_00004.xml")
+data <- read_ipums_micro(ddi)
+```
+
+# Exploratory Data Analysis (EDA)
+
+```{r}
+# Data Cleaning Process
+data = data %>% filter(
+  YEAR == 2023,
+  INCTOT != 999999999,
+  AGE != 0,
+  !is.na(CITIZEN),
+  !is.na(IND),
+  IND != 0,
+  METFIPS != 99999,
+  METFIPS != 99998,
+  RACE != 999,
+  !is.na(RACE),
+  EDUC != 999,
+  INCTOT > 0
+)
+
+# Performing Log transformation on target variable for future analysis
+data$log_INCTOT <- log(data$INCTOT)
+
+# Features used in the model for checkpoint: EDUC, METFIPS, AGE, IND, OCC, RACE, SEX, CITIZEN
+# Target Variable for the model: INCTOT
+
+#Checking the distribution of the target variable
+
+ggplot(data = data) +
+  geom_histogram(mapping = aes(x=INCTOT), bins = 100)
+
+
+#Checking the distribution of the log transformed variable
+
+ggplot(data = data) +
+  geom_histogram(mapping = aes(x=log_INCTOT), bins = 100)
+```
+
+# Model Building
+Describe the models you have built, including any assumptions or choices made in the process.
+
+
+
+**Model 1**: This model assesses the impact of Education (EDUC), Age (AGE), and Industry Group (IND) on income before diving into more detailed models 
+```{r}
+model1 = lm(INCTOT ~ EDUC + AGE + as.factor(IND), data = data)
+
+
+#Summary
+summary_model <- summary(model1)
+cat("Residuals summary:\n")
+cat("Mean:", mean(summary_model$residuals), "\n")
+cat("Median:", median(summary_model$residuals), "\n")
+cat("Min:", min(summary_model$residuals), "\n")
+cat("Max:", max(summary_model$residuals), "\n")
+cat("R-squared:", summary_model$r.squared, "\n")
+cat("Adjusted R-squared:", summary_model$adj.r.squared, "\n")
+cat("F-statistic:", summary_model$fstatistic[1], "on", summary_model$fstatistic[2], "and", summary_model$fstatistic[3], "DF,", "p-value:", summary_model$fstatistic[4], "\n")
+```
+
+
+
+**Model 2**: This model assesses the impact of Education (EDUC), Age (AGE), and Occupation/Role (OCC) on income 
+```{r}
+model2 = lm(INCTOT ~ EDUC + AGE + as.factor(OCC), data = data)
+
+
+#Summary
+summary_model <- summary(model2)
+cat("Residuals summary:\n")
+cat("Mean:", mean(summary_model$residuals), "\n")
+cat("Median:", median(summary_model$residuals), "\n")
+cat("Min:", min(summary_model$residuals), "\n")
+cat("Max:", max(summary_model$residuals), "\n")
+cat("R-squared:", summary_model$r.squared, "\n")
+cat("Adjusted R-squared:", summary_model$adj.r.squared, "\n")
+cat("F-statistic:", summary_model$fstatistic[1], "on", summary_model$fstatistic[2], "and", summary_model$fstatistic[3], "DF,", "p-value:", summary_model$fstatistic[4], "\n")
+```
+
+
+
+**Model 3**: Replicates Model 1 but here we use log-transformed income to stabilize variance
+```{r}
+model3 = lm(log_INCTOT ~ EDUC + AGE + as.factor(IND), data = data)
+
+
+#Summary
+summary_model <- summary(model3)
+cat("Residuals summary:\n")
+cat("Mean:", mean(summary_model$residuals), "\n")
+cat("Median:", median(summary_model$residuals), "\n")
+cat("Min:", min(summary_model$residuals), "\n")
+cat("Max:", max(summary_model$residuals), "\n")
+cat("R-squared:", summary_model$r.squared, "\n")
+cat("Adjusted R-squared:", summary_model$adj.r.squared, "\n")
+cat("F-statistic:", summary_model$fstatistic[1], "on", summary_model$fstatistic[2], "and", summary_model$fstatistic[3], "DF,", "p-value:", summary_model$fstatistic[4], "\n")
+
+```
+
+
+
+**Model 4**: Replicates Model 2 but here we use log-transformed income to stabilize variance
+```{r}
+model4 = lm(log_INCTOT ~ EDUC + AGE + as.factor(OCC), data = data)
+
+
+#Summary
+summary_model <- summary(model4)
+cat("Residuals summary:\n")
+cat("Mean:", mean(summary_model$residuals), "\n")
+cat("Median:", median(summary_model$residuals), "\n")
+cat("Min:", min(summary_model$residuals), "\n")
+cat("Max:", max(summary_model$residuals), "\n")
+cat("R-squared:", summary_model$r.squared, "\n")
+cat("Adjusted R-squared:", summary_model$adj.r.squared, "\n")
+cat("F-statistic:", summary_model$fstatistic[1], "on", summary_model$fstatistic[2], "and", summary_model$fstatistic[3], "DF,", "p-value:", summary_model$fstatistic[4], "\n")
+
+```
+
+
+
+**Model 5**: The addition of Metropolitan area code (METFIPS) in this model allows for the examination of geographic disparities in income
+```{r}
+model5 = lm(INCTOT ~ EDUC + as.factor(METFIPS) + AGE + as.factor(IND) + as.factor(SEX), data = data)
+
+
+#Summary
+summary_model <- summary(model5)
+cat("Residuals summary:\n")
+cat("Mean:", mean(summary_model$residuals), "\n")
+cat("Median:", median(summary_model$residuals), "\n")
+cat("Min:", min(summary_model$residuals), "\n")
+cat("Max:", max(summary_model$residuals), "\n")
+cat("R-squared:", summary_model$r.squared, "\n")
+cat("Adjusted R-squared:", summary_model$adj.r.squared, "\n")
+cat("F-statistic:", summary_model$fstatistic[1], "on", summary_model$fstatistic[2], "and", summary_model$fstatistic[3], "DF,", "p-value:", summary_model$fstatistic[4], "\n")
+
+```
+
+
+
+**Model 6**: Similar to Model 5, we examine geographic disparities in income while taking Log(INCTOT)
+```{r}
+model6 = lm(log_INCTOT ~ EDUC + as.factor(METFIPS) + AGE + as.factor(IND) + as.factor(SEX), data = data)
+
+
+#Summary
+summary_model <- summary(model6)
+cat("Residuals summary:\n")
+cat("Mean:", mean(summary_model$residuals), "\n")
+cat("Median:", median(summary_model$residuals), "\n")
+cat("Min:", min(summary_model$residuals), "\n")
+cat("Max:", max(summary_model$residuals), "\n")
+cat("R-squared:", summary_model$r.squared, "\n")
+cat("Adjusted R-squared:", summary_model$adj.r.squared, "\n")
+cat("F-statistic:", summary_model$fstatistic[1], "on", summary_model$fstatistic[2], "and", summary_model$fstatistic[3], "DF,", "p-value:", summary_model$fstatistic[4], "\n")
+
+```
+
+
+
+**Model 7**: This extends the analysis further by incorporating Ethnicity (RACE) and Citizenship status (CITIZEN). The rationale is to capture potential income disparities that could arise from racial and citizenship-based differences
+```{r}
+model7 = lm(INCTOT ~ EDUC + as.factor(METFIPS) + AGE + as.factor(IND) + as.factor(OCC) + as.factor(RACE) + as.factor(SEX) + as.factor(CITIZEN), data = data)
+
+
+#Summary
+summary_model <- summary(model7)
+cat("Residuals summary:\n")
+cat("Mean:", mean(summary_model$residuals), "\n")
+cat("Median:", median(summary_model$residuals), "\n")
+cat("Min:", min(summary_model$residuals), "\n")
+cat("Max:", max(summary_model$residuals), "\n")
+cat("R-squared:", summary_model$r.squared, "\n")
+cat("Adjusted R-squared:", summary_model$adj.r.squared, "\n")
+cat("F-statistic:", summary_model$fstatistic[1], "on", summary_model$fstatistic[2], "and", summary_model$fstatistic[3], "DF,", "p-value:", summary_model$fstatistic[4], "\n")
+
+```
+
+
+
+**Model 8**: Same as Model 7 but uses log transformation on INCTOT which enables us to interpret these disparities as percentage differences relative to a reference group.
+```{r}
+model8 = lm(log_INCTOT ~ EDUC + as.factor(METFIPS) + AGE + as.factor(IND) + as.factor(OCC) + as.factor(RACE) + as.factor(SEX) + as.factor(CITIZEN), data = data)
+
+
+#Summary
+summary_model <- summary(model8)
+cat("Residuals summary:\n")
+cat("Mean:", mean(summary_model$residuals), "\n")
+cat("Median:", median(summary_model$residuals), "\n")
+cat("Min:", min(summary_model$residuals), "\n")
+cat("Max:", max(summary_model$residuals), "\n")
+cat("R-squared:", summary_model$r.squared, "\n")
+cat("Adjusted R-squared:", summary_model$adj.r.squared, "\n")
+cat("F-statistic:", summary_model$fstatistic[1], "on", summary_model$fstatistic[2], "and", summary_model$fstatistic[3], "DF,", "p-value:", summary_model$fstatistic[4], "\n")
+
+```
+
+# Results
+Discuss the results of your models, including any important metrics and how they compare to your objectives.
+
+**RESPONSE**
+
+Based on these statistics, Model 8 seems to be the best in terms of both R-squared and Adjusted R-squared, which indicate the proportion of variance in the dependent variable that's predictable from the independent variables. The Adjusted R-squared is particularly important as it adjusts for the number of variables in the model, making it a better measure for comparing models with a different number of predictors.
+
+Model 8's higher R-squared values suggest it explains more of the variability in the logarithm of total income compared to the other models. Furthermore, using the log-transformed dependent variable means that we can interpret the model coefficients as percent changes in total income, which often makes the results more interpretable, especially in economic contexts where multiplicative relationships are common.
+
+**NEXT STEPS**: We plan to add visual aids to clearly communicate our results obtained. Currently, we only have statistical summaries to showcase performance of various models 
+
+
+# Analysis (interpretation)
+
+Model 8 explains the largest proportion of variance in income.
+
+The log transformation of INCTOT allows the coefficients to be interpreted as elasticities or percentage changes. This is particularly suitable for income data, which often follows a log-normal distribution. For example, if the coefficient for EDUC is 0.1, we could interpret this as "a one-unit increase in education level is associated with an average 10% increase in total income, holding all other factors constant."
+
+The inclusion of variables such as RACE and CITIZEN alongside METFIPS also allows for a nuanced interpretation of how demographic and socio-economic factors contribute to income disparities. 
+
+
+# Conclusions and Future Work
+
+In this checkpoint assignment, we leveraged the features outlined in our proposal, including age, race, immigration status, citizenship, region, education, industry, and occupation. We encountered difficulties in implementing the feature selection component, leading to its exclusion from our current analysis. Our immediate plan involves refining our code to enable effective feature selection and evaluation. We implemented various models too observe which variables explain the Income of the individual the best:
+
+Models 1 and 2: These initial models included basic personal information and job details to see if we could spot patterns in how much money people earn. We looked at things like how long someone went to school, how old they are, and what kind of work they do.
+
+Models 3 and 4: We then improved our approach by considering the income data in terms of percentage changes rather than just straight dollar amounts. This step acknowledged that income doesn't increase in simple, consistent jumps; rather, it often grows in proportion to other factors.
+
+Models 5, 6, 7: Adding to our understanding, we started considering where people live (metropolitan area codes) and elements of their identity, like ethnicity and citizenship. This allowed us to see how income is influenced by the cost of living in different areas and social factors.
+
+Model 8 stands out as the most informative model. It brings together all the variables we believe are important to determining income. This model provides the clearest understanding of income differences among individuals, integrating education, employment details, location, and social background.
+
+Finally, we have aligned on focusing solely on predicting individual's salary instead of performing analysis on industry performance. Further, the Model 8 that we have selected still is not the best fit even though out of the models that we have it has the highest R-squared. We plan to incorporate additional relevant features as well as implement Regularized models to enhance the accuracy and precision of our regression model  
+
+

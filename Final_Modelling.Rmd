@@ -1,0 +1,185 @@
+---
+title: "Modeling"
+output:
+  pdf_document
+---
+
+In this section, we fit the model. Before doing that, however, it is essential to select the appropriate features and the ideal model to fit based on the problem that we are trying to solve for. 
+
+# Data Loading
+
+We install and load the required packages, followed by reading the model-ready csv file. Further, we convert certain categorical columns so that R considers them as a factor instead of an integer
+
+```{r}
+list.of.packages <- c("caret", "glmnet", "tidyverse", "randomForest")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+library('tidyverse')  
+library('caret')
+library('glmnet')
+library('randomForest')
+
+set.seed(123) # Setting a seed for reproducibility
+
+data <- read.csv("model_data_clean.csv")
+
+data$STATEFIP <- as.factor(data$STATEFIP)
+data$SEX <- as.factor(data$SEX)
+data$RACE <- as.factor(data$RACE)
+data$OCC_CODE <- as.factor(data$OCC_CODE)
+data$IND_CODE <- as.factor(data$IND_CODE)
+data$CITIZEN <- as.factor(data$CITIZEN)
+
+```
+
+# Feature Selection
+
+Once we have the data loaded in, we perform feature selection. In our case, we use the Lasso Regression method to understand which features are not important. Lasso Regression automatically performs feature selection by shrinking some coefficients of features to zero. We ensure that Dummy Variables are created for each categorical feature before running lasso regression and 
+
+```{r}
+
+# Split input data to two datasets, one for Log transformed income and other for raw income values
+data1 <- data %>% select(-INCTOT)
+data2 <- data %>% select(-log_INCTOT)
+
+# Create Train and Test data for both these datasets
+splitIndex1 <- createDataPartition(data$log_INCTOT, p = 0.8, list = FALSE)
+train1 <- data1[ splitIndex1,]
+test1 <- data1[-splitIndex1,]
+
+splitIndex2 <- createDataPartition(data$INCTOT, p = 0.8, list = FALSE)
+train2 <- data2[ splitIndex2,]
+test2 <- data2[-splitIndex2,]
+
+# Define X and Y for all Cases as well as create Dummy Variables for Categorical Features
+x1 <- train1[, c("MET_CODE", "STATEFIP", "AGE", "SEX", "RACE", "CITIZEN", "OCC_CODE", "IND_CODE", "EDUC", "UHRSWORKT")]
+x1 <- model.matrix(~., data = x1)
+y1 <- train1$log_INCTOT
+
+x2 <- train2[, c("MET_CODE", "STATEFIP", "AGE", "SEX", "RACE", "CITIZEN", "OCC_CODE", "IND_CODE", "EDUC", "UHRSWORKT")]
+x2 <- model.matrix(~., data = x2)
+y2 <- train2$INCTOT
+
+# Fit LASSO Model to perform Feature Selection
+fit1 <- cv.glmnet(x1, y1, family="gaussian")
+coef_selected1 <- coef(fit1, s="lambda.min")
+print(coef_selected1)
+selected_features1 <- which(abs(coef_selected1[-1]) != 0)
+x1 <- x1[, c(selected_features1)]
+
+fit2 <- cv.glmnet(x2, y2, family="gaussian")
+coef_selected2 <- coef(fit2, s="lambda.min")
+print(coef_selected2)
+selected_features2 <- which(abs(coef_selected2[-1]) != 0)
+x2 <- x2[, c(selected_features2)]
+
+```
+
+# Model Building
+
+For income prediction, we are using RIDGE Regression for prediction. Further, we are considering 2 models, one with the RAW Income variable INCTOT and the second with the LOG transformed Income variable log_INCTOT. By using Ridge regression on both, we try to compare the performance and try to understand which is a better model for our usecase,
+
+**Model 1**: 
+
+Here, we model for the Log Transformed model
+
+
+```{r}
+
+cv_ridge <- cv.glmnet(as.matrix(x1), y1, alpha = 0, type.measure = "mse", nfolds = 10)
+
+# Plot the CV results to find the optimal lambda
+plot(cv_ridge)
+
+cv_error <- cv_ridge$cvm
+
+train_error <- mean(cv_error)
+validation_error <- min(cv_error)  # This is the minimum error, which corresponds to the validation error
+
+# Best lambda from CV
+best_lambda <- cv_ridge$lambda.min
+print(paste("Optimal lambda:", best_lambda))
+
+# Fit the model using the best lambda
+final_ridge_model <- glmnet(x1, y1, alpha = 0, lambda = best_lambda, nfolds = 10, standardize = TRUE)
+
+# Predict on Test Data
+x_test1 <- test1[, c("MET_CODE", "STATEFIP", "AGE", "SEX", "RACE", "CITIZEN", "OCC_CODE", "IND_CODE", "EDUC", "UHRSWORKT")]
+x_test1 <- model.matrix(~., data = x_test1)
+x_test1 <- x_test1[, c(selected_features1)]
+y_test1 <- test1$log_INCTOT
+
+predictions <- predict(final_ridge_model, newx = x_test1)
+rsq <- 1 - sum((y_test1 - predictions)^2) / sum((y_test1 - mean(y_test1))^2)
+mse_test <- mean((y_test1 - predictions)^2)
+rmse_test <- sqrt(mse_test)
+mae_test <- mean(abs(y_test1 - predictions))
+
+# Print the results
+print(paste("Train MSE:", train_error))
+print(paste("Validation MSE:", validation_error))
+print(paste("R-squared: ", rsq))
+print(paste("Test MSE: ", mse_test))
+print(paste("Test RMSE: ", rmse_test))
+print(paste("Test MAE: ", mae_test))
+
+```
+
+*Interpretation*:
+
+From the results above, we observe that we have an $R^2$ value of approximately 0.3 and moderate Train, Validation and Test Error. We can interpret that, on average, when using LOG_INCTOT, our model would be off by ~0.7 units when predicted the Wage of an individual given all other features. 
+
+
+
+**Model 2**:
+
+Here we model for the Raw INCTOT variable
+```{r}
+
+cv_ridge2 <- cv.glmnet(as.matrix(x2), y2, alpha = 0, type.measure = "mse", nfolds = 10)
+
+# Plot the CV results to find the optimal lambda
+plot(cv_ridge2)
+
+cv_error2 <- cv_ridge2$cvm
+
+train_error2 <- mean(cv_error2)
+validation_error2 <- min(cv_error2)
+
+# Best lambda from CV
+best_lambda2 <- cv_ridge2$lambda.min
+print(paste("Optimal lambda:", best_lambda2))
+
+# Fit the model using the best lambda
+final_ridge_model2 <- glmnet(x2, y2, alpha = 0, lambda = best_lambda2, nfolds = 10, standardize = TRUE)
+
+# Predict on Test Data
+x_test2 <- test2[, c("MET_CODE", "STATEFIP", "AGE", "SEX", "RACE", "CITIZEN", "OCC_CODE", "IND_CODE", "EDUC", "UHRSWORKT")]
+x_test2 <- model.matrix(~., data = x_test2)
+x_test2 <- x_test2[, c(selected_features2)]
+y_test2 <- test2$INCTOT
+
+predictions2 <- predict(final_ridge_model2, newx = x_test2)
+rsq2 <- 1 - sum((y_test2 - predictions2)^2) / sum((y_test2 - mean(y_test2))^2)
+mse_test2 <- mean((y_test2 - predictions2)^2)
+rmse_test2 <- sqrt(mse_test2)
+mae_test2 <- mean(abs(y_test2 - predictions2))
+
+# Print the results
+print(paste("Train MSE:", train_error2))
+print(paste("Validation MSE:", validation_error2))
+print(paste("R-squared: ", rsq2))
+print(paste("Test MSE: ", mse_test2))
+print(paste("Test RMSE: ", rmse_test2))
+print(paste("Test MAE: ", mae_test2))
+```
+
+*Interpretation*:
+
+From the results above, we observe that we have an $R^2$ value of approximately 0.2 and extremely high Train, Validation and Test Error, so much so that they don't quite make sense in the context of the wages that we have in the dataset.
+
+
+**CONCLUSION**
+
+Based on above results, it is evident that our Log transformed model performs much better as compared to the raw INCTOT feature for our given dataset.

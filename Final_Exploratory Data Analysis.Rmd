@@ -1,0 +1,178 @@
+---
+title: "Exploratory Data Analysis"
+output:
+  pdf_document
+---
+
+Here, we explore the trends in wages across various features and summarize our findings. 
+
+# Data Loading
+
+```{r}
+list.of.packages <- c("tidyverse", "maps", "ggplot2", "dplyr")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+library('tidyverse')
+library(ggplot2)
+library(dplyr)
+library(maps)
+library(viridis) # For color scales in maps
+
+set.seed(123) # Setting a seed for reproducibility
+
+# Loading the processed data
+data <- read.csv("eda_data_clean.csv")
+
+```
+
+# Target Variable Histograms
+
+Here, we look at histograms for INCTOT and Log(INCTOT)
+ 
+```{r}
+
+# Histogram for INCTOT
+ggplot(data, aes(x = INCTOT)) +
+geom_histogram(binwidth = 5000, fill = "blue", color = "black") +
+labs(title = "Histogram of Total Personal Income", x = "Total Income", y = "Frequency")
+
+# Histogram for Log(INCTOT)
+ggplot(data, aes(x = log_INCTOT)) + # Assuming the log column is named as Log.INCTOT
+geom_histogram(binwidth = 0.1, fill = "green", color = "black") +
+labs(title = "Histogram of Log Transformed Total Personal Income", x = "Log of Total Income", y
+= "Frequency")
+
+```
+
+We observe that by log transformation, we are able to shift the concentration from the left side of the original plot to a distribution which is more central and suitable for our analysis.
+
+
+
+# Plotting AGE and Education against Total Income
+
+```{r}
+
+# Scatter Plot for Age vs INCTOT
+ggplot(data, aes(x = AGE, y = INCTOT)) +
+geom_point(alpha = 0.6, color = "red") +
+labs(title = "Scatter Plot of Age vs Total Personal Income", x = "Age", y = "Total Personal
+Income")
+
+# Scatter Plot for EDUC vs INCTOT
+ggplot(data, aes(x = EDUC, y = INCTOT)) +
+geom_point(alpha = 0.6, color = "darkblue") +
+labs(title = "Scatter Plot of Educational Attainment vs Total Personal Income", x = "Educational
+Attainment", y = "Total Personal Income")
+
+# Violin Plot for SEX vs INCTOT
+ggplot(data, aes(x = as.factor(SEX), y = INCTOT, fill = as.factor(SEX))) +
+geom_violin() +
+labs(title = "Violin Plot of Sex vs Total Personal Income", x = "Sex", y = "Total Personal
+Income")
+
+```
+
+We are able to observe trends in Age and Education, where in we see a rise in income as Age increases and then after a certain point (retirment), the income goes down. In case of Education, we see as the degree attained is better, the income is also generally better.
+
+There are no stark differences for the gender plot. However, we can see that Males(1) have a slightly higher concentration on higher personal income as compared to Female(2).
+
+
+# State-wise Trends
+
+We plot the average wages across various states on the US map.
+
+
+```{r}
+
+us_map <- map_data("state")
+
+# Aggregate data to get average INCTOT by STATEFIP
+state_income <- data %>%
+group_by(STATEFIP, STATE) %>%
+summarise(Avg_INCTOT = mean(INCTOT, na.rm = TRUE))
+
+state_income$STATE <- toupper(state_income$STATE)
+us_map$region <- toupper(us_map$region)
+
+map_data_merged <- merge(us_map, state_income, by.x = "region", by.y = "STATE", all.x = TRUE)
+map_data_merged <- map_data_merged %>% select(-subregion)
+map_data_merged_clean <- na.omit(map_data_merged)
+
+
+# Plotting the map
+ggplot(data = map_data_merged_clean) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = Avg_INCTOT)) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", name = "Average Wages") +
+  labs(title = "Average Wages per State") +
+  theme_void()
+
+```
+
+We observe the typical states where we would see large incomes, on eastern coast, New York and on the Western Coast, Seattle and California
+
+
+# Top Metropolitans, Occupations, and Industry
+
+Here, we aggregate the data to get the top 10 areas, occupations and indsutry based on average wages.
+
+
+```{r}
+
+# Top 10 Metropolitan Areas by Average Salary
+data %>%
+group_by(MET) %>%
+summarise(Avg_Salary = mean(INCTOT, na.rm = TRUE)) %>%
+arrange(desc(Avg_Salary)) %>%
+head(10)
+
+```
+
+
+```{r}
+
+data %>%
+group_by(OCC_VAL) %>%
+summarise(Avg_Salary = mean(INCTOT, na.rm = TRUE)) %>%
+arrange(desc(Avg_Salary)) %>%
+head(10)
+
+data %>%
+group_by(OCC_CATEG) %>%
+summarise(Avg_Salary = mean(INCTOT, na.rm = TRUE)) %>%
+arrange(desc(Avg_Salary)) %>%
+head(10)
+
+```
+
+
+
+
+```{r}
+data %>%
+group_by(IND_VAL) %>%
+summarise(Avg_Salary = mean(INCTOT, na.rm = TRUE)) %>%
+arrange(desc(Avg_Salary)) %>%
+head(10)
+
+data %>%
+group_by(IND_CATEG) %>%
+summarise(Avg_Salary = mean(INCTOT, na.rm = TRUE)) %>%
+arrange(desc(Avg_Salary)) %>%
+head(10)
+
+```
+
+# Saving Data for modelling
+
+Finally, once we have utilized the required columns for EDA, we save a data with only the required features for modelling
+
+```{r}
+data1 <- data %>% select(-METFIPS, -MET, -STATE, 
+                         -OCC, -OCC_VAL, -OCC_CATEG, 
+                         -IND, -IND_VAL, -IND_CATEG)
+
+write.csv(data1, "model_data_clean.csv", row.names = FALSE)
+
+```
+
